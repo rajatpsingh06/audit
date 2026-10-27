@@ -49,9 +49,8 @@
     const { useState, useEffect, useMemo } = React;
 
     const STORAGE_KEY = 'PAWSBNB_AUDIT_DB_V2';
-    const FOUNDER_PIN = '1708'; // 🔒 YOUR SECRET FOUNDER PIN CODE (Change anytime here)
+    const FOUNDER_PIN = '1708'; // 🔒 YOUR SECRET FOUNDER PIN CODE
 
-    // --- PRICING TIERS ---
     const PROPERTY_TIERS = [
       { id: '1bhk', label: 'Studio / 1 BHK', baseMin: 650, baseMax: 1100, icon: '🏢' },
       { id: '2_3bhk', label: '2–3 BHK High-Rise', baseMin: 850, baseMax: 1500, icon: '🏙️' },
@@ -154,7 +153,7 @@
         }
       });
 
-      const [activeTab, setActiveTab] = useState('inspector'); // 'inspector' | 'founder'
+      const [activeTab, setActiveTab] = useState('inspector');
       const [isFounderUnlocked, setIsFounderUnlocked] = useState(false);
       const [pinInput, setPinInput] = useState('');
       const [showPinModal, setShowPinModal] = useState(false);
@@ -194,7 +193,6 @@
         setTimeout(() => setToast(null), 4000);
       };
 
-      // Handle Tab Switch with PIN Verification
       const handleTabSwitch = (tab) => {
         if (tab === 'founder' && !isFounderUnlocked) {
           setShowPinModal(true);
@@ -364,6 +362,39 @@
         triggerToast(`🗑️ Audit ${auditId} deleted.`);
       };
 
+      const handleExportJSON = () => {
+        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(audits, null, 2));
+        const dlAnchor = document.createElement('a');
+        dlAnchor.setAttribute("href", dataStr);
+        dlAnchor.setAttribute("download", `pawsbnb-audits-${new Date().toISOString().slice(0,10)}.json`);
+        document.body.appendChild(dlAnchor);
+        dlAnchor.click();
+        dlAnchor.remove();
+        triggerToast('📦 Audit Database exported as .json file!');
+      };
+
+      const handleImportJSON = (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          try {
+            const imported = JSON.parse(ev.target.result);
+            if (Array.isArray(imported)) {
+              const existingIds = new Set(audits.map(a => a.auditId));
+              const merged = [...imported.filter(a => !existingIds.has(a.auditId)), ...audits];
+              setAudits(merged);
+              if (merged.length > 0) setSelectedAuditId(merged[0].auditId);
+              triggerToast(`📥 Imported ${imported.length} audit packet(s)!`);
+              setShowSyncModal(false);
+            }
+          } catch (err) {
+            alert('Invalid JSON file.');
+          }
+        };
+        reader.readAsText(file);
+      };
+
       const filteredAudits = useMemo(() => {
         return audits.filter(a => {
           const matchesStatus = statusFilter === 'all' || a.approvalStatus === statusFilter;
@@ -421,12 +452,20 @@
                 </div>
 
                 {isFounderUnlocked && activeTab === 'founder' && (
-                  <button
-                    onClick={() => setIsFounderUnlocked(false)}
-                    className="px-2.5 py-1.5 rounded-xl bg-red-500/20 text-red-300 text-xs font-bold border border-red-500/30"
-                  >
-                    Lock Founder Mode
-                  </button>
+                  <>
+                    <button
+                      onClick={() => setShowSyncModal(true)}
+                      className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-bold text-white border border-white/15 transition"
+                    >
+                      ⚙️ Sync / Export DB
+                    </button>
+                    <button
+                      onClick={() => setIsFounderUnlocked(false)}
+                      className="px-2.5 py-1.5 rounded-xl bg-red-500/20 text-red-300 text-xs font-bold border border-red-500/30"
+                    >
+                      Lock
+                    </button>
+                  </>
                 )}
               </div>
             </div>
@@ -474,6 +513,36 @@
                     </button>
                   </div>
                 </form>
+              </div>
+            </div>
+          )}
+
+          {/* SYNC MODAL */}
+          {showSyncModal && (
+            <div className="fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4 no-print">
+              <div className="bg-white max-w-lg w-full rounded-3xl p-6 shadow-2xl">
+                <div className="flex items-center justify-between pb-3 border-b border-charcoal/10 mb-4">
+                  <h3 className="font-serif text-xl font-bold text-charcoal">Audit Database Packet Transfer</h3>
+                  <button onClick={() => setShowSyncModal(false)} className="text-xs font-bold px-2.5 py-1 rounded-lg bg-oatmeal">✕</button>
+                </div>
+                <div className="bg-oatmeal rounded-2xl p-4 mb-2">
+                  <p className="text-xs font-bold text-charcoal mb-1">Transfer Audits Between Inspector Phone & Your MacBook</p>
+                  <p className="text-[11px] text-charcoal/70 mb-3">
+                    Export completed audits as a file on the field agent's phone, send it over WhatsApp, and click Import here on your laptop!
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleExportJSON}
+                      className="flex-1 py-2.5 rounded-xl bg-charcoal text-white text-xs font-bold"
+                    >
+                      📤 Export Audits (.json)
+                    </button>
+                    <label className="flex-1 py-2.5 rounded-xl bg-terracotta text-white text-xs font-bold text-center cursor-pointer">
+                      📥 Import Audit File
+                      <input type="file" accept=".json" onChange={handleImportJSON} className="hidden" />
+                    </label>
+                  </div>
+                </div>
               </div>
             </div>
           )}
