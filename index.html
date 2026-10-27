@@ -49,7 +49,7 @@
     const { useState, useEffect, useMemo } = React;
 
     const STORAGE_KEY = 'PAWSBNB_AUDIT_DB_V2';
-    const CLOUD_CONFIG_KEY = 'PAWSBNB_CLOUD_CONFIG_V1';
+    const FOUNDER_PIN = '1708'; // 🔒 YOUR SECRET FOUNDER PIN CODE (Change anytime here)
 
     // --- PRICING TIERS ---
     const PROPERTY_TIERS = [
@@ -114,43 +114,9 @@
         pointsSummary: { passed: 12, fix: 0, failed: 0 },
         failedItems: [],
         detailedPoints: createBlank12Points()
-      },
-      {
-        auditId: 'AUD-2026-890',
-        submittedAt: '26 Oct 2026, 05:20 PM',
-        inspectorName: 'Vikram Mehta (Field Exec #04)',
-        gps: '28.5672° N, 77.3651° E (Verified inside Sector 50, Noida)',
-        hostName: 'Rohan Malhotra',
-        hostPhone: '9811122233',
-        society: 'ATS Greens Village, Tower 4, Flat 801',
-        sector: 'Sector 50, Noida',
-        propertyTier: '4bhk_penthouse',
-        approvedPets: ['small_dogs', 'med_dogs', 'large_dogs', 'birds'],
-        rwaFriendly: true,
-        cameraAmenity: false,
-        emotionalMotivation: true,
-        instantBookNotice: '1 Day Advance Notice',
-        minRate: 1200,
-        maxRate: 2600,
-        recommendedVerdict: 'hold',
-        approvalStatus: 'pending',
-        inspectorRemarks: 'Spacious home and loving family, but guest bedroom balcony is missing pigeon netting and two Aloe Vera pots need to be moved out of reach.',
-        kycPhotos: {
-          hostSelfie: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=600&q=80',
-          govtId: 'https://images.unsplash.com/photo-1554224155-6726b3ff858f?auto=format&fit=crop&w=600&q=80',
-          residencyProof: 'https://images.unsplash.com/photo-1450133064473-71024230f91b?auto=format&fit=crop&w=600&q=80',
-          livingRoom: 'https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?auto=format&fit=crop&w=600&q=80'
-        },
-        pointsSummary: { passed: 10, fix: 2, failed: 0 },
-        failedItems: [
-          'Point #1 (Balcony & Window Netting): Secondary balcony needs netting.',
-          'Point #6 (Pet-Safe Plant Sweep): Relocate 2 Aloe Vera pots.'
-        ],
-        detailedPoints: createBlank12Points()
       }
     ];
 
-    // --- CLIENT-SIDE IMAGE COMPRESSOR (Converts 8MB phone camera shot -> ~60KB Base64 JPEG) ---
     const compressImageFile = (file, maxWidth = 800, quality = 0.68) => {
       return new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -168,8 +134,7 @@
             canvas.height = height;
             const ctx = canvas.getContext('2d');
             ctx.drawImage(img, 0, 0, width, height);
-            const dataUrl = canvas.toDataURL('image/jpeg', quality);
-            resolve(dataUrl);
+            resolve(canvas.toDataURL('image/jpeg', quality));
           };
           img.onerror = reject;
           img.src = event.target.result;
@@ -180,7 +145,6 @@
     };
 
     function App() {
-      // Load saved audits from localStorage
       const [audits, setAudits] = useState(() => {
         try {
           const saved = localStorage.getItem(STORAGE_KEY);
@@ -191,55 +155,38 @@
       });
 
       const [activeTab, setActiveTab] = useState('inspector'); // 'inspector' | 'founder'
+      const [isFounderUnlocked, setIsFounderUnlocked] = useState(false);
+      const [pinInput, setPinInput] = useState('');
+      const [showPinModal, setShowPinModal] = useState(false);
+
       const [selectedAuditId, setSelectedAuditId] = useState(() => audits[0]?.auditId || '');
-      const [statusFilter, setStatusFilter] = useState('all'); // 'all' | 'pending' | 'approved' | 'hold' | 'rejected'
+      const [statusFilter, setStatusFilter] = useState('all');
       const [searchQuery, setSearchQuery] = useState('');
       const [lightboxImg, setLightboxImg] = useState(null);
       const [showSyncModal, setShowSyncModal] = useState(false);
       const [toast, setToast] = useState(null);
 
-      // Cloud Config (Optional Supabase Real-Time Sync)
-      const [cloudConfig, setCloudConfig] = useState(() => {
-        try {
-          const saved = localStorage.getItem(CLOUD_CONFIG_KEY);
-          return saved ? JSON.parse(saved) : { supabaseUrl: '', supabaseKey: '' };
-        } catch (e) {
-          return { supabaseUrl: '', supabaseKey: '' };
-        }
-      });
-
-      // --- INSPECTOR FORM STATE ---
+      // Inspector Form State
       const [inspectorName, setInspectorName] = useState('Vikram Mehta (Field Exec #04)');
       const [gpsStamp, setGpsStamp] = useState('');
       const [gpsLoading, setGpsLoading] = useState(false);
-
       const [hostName, setHostName] = useState('');
       const [hostPhone, setHostPhone] = useState('');
       const [society, setSociety] = useState('');
       const [sector, setSector] = useState('Sector 135, Noida');
       const [rwaFriendly, setRwaFriendly] = useState(true);
       const [instantBookNotice, setInstantBookNotice] = useState('Same-Day (3 Hrs Notice)');
-
-      const [kycPhotos, setKycPhotos] = useState({
-        hostSelfie: null,
-        govtId: null,
-        residencyProof: null,
-        livingRoom: null
-      });
-
+      const [kycPhotos, setKycPhotos] = useState({ hostSelfie: null, govtId: null, residencyProof: null, livingRoom: null });
       const [propertyTier, setPropertyTier] = useState('2_3bhk');
       const [approvedPets, setApprovedPets] = useState(['small_dogs', 'cats']);
       const [points, setPoints] = useState(createBlank12Points);
       const [inspectorRemarks, setInspectorRemarks] = useState('');
       const [verdict, setVerdict] = useState('approve');
 
-      // Sync to localStorage whenever audits change
       useEffect(() => {
         try {
           localStorage.setItem(STORAGE_KEY, JSON.stringify(audits));
-        } catch (e) {
-          console.error('Storage quota warning:', e);
-        }
+        } catch (e) {}
       }, [audits]);
 
       const triggerToast = (msg) => {
@@ -247,7 +194,29 @@
         setTimeout(() => setToast(null), 4000);
       };
 
-      // Live Geolocation
+      // Handle Tab Switch with PIN Verification
+      const handleTabSwitch = (tab) => {
+        if (tab === 'founder' && !isFounderUnlocked) {
+          setShowPinModal(true);
+        } else {
+          setActiveTab(tab);
+        }
+      };
+
+      const verifyFounderPin = (e) => {
+        e.preventDefault();
+        if (pinInput === FOUNDER_PIN) {
+          setIsFounderUnlocked(true);
+          setShowPinModal(false);
+          setPinInput('');
+          setActiveTab('founder');
+          triggerToast('🔓 Founder Dashboard Unlocked!');
+        } else {
+          alert('❌ Incorrect Founder PIN Code');
+          setPinInput('');
+        }
+      };
+
       const handleCaptureGPS = () => {
         setGpsLoading(true);
         if ('geolocation' in navigator) {
@@ -258,13 +227,13 @@
               const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
               setGpsStamp(`${lat}° N, ${lng}° E • Verified at ${now}`);
               setGpsLoading(false);
-              triggerToast('📍 Live GPS Coordinates Stamped!');
+              triggerToast('📍 Live GPS Stamped!');
             },
             () => {
               const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
               setGpsStamp(`28.4962° N, 77.4019° E (Noida Pin) • ${now}`);
               setGpsLoading(false);
-              triggerToast('📍 Fallback Noida Sector GPS Stamped!');
+              triggerToast('📍 Noida Sector GPS Stamped!');
             },
             { timeout: 6000 }
           );
@@ -274,7 +243,6 @@
         }
       };
 
-      // Compressed Photo Handlers
       const handleKycPhoto = async (key, e) => {
         const file = e.target.files?.[0];
         if (!file) return;
@@ -296,12 +264,9 @@
       };
 
       const togglePetCategory = (petId) => {
-        setApprovedPets(prev =>
-          prev.includes(petId) ? prev.filter(x => x !== petId) : [...prev, petId]
-        );
+        setApprovedPets(prev => prev.includes(petId) ? prev.filter(x => x !== petId) : [...prev, petId]);
       };
 
-      // Score & Critical Safety Lock
       const auditStats = useMemo(() => {
         const passed = points.filter(p => p.status === 'pass').length;
         const fix = points.filter(p => p.status === 'fix').length;
@@ -310,14 +275,12 @@
         return { passed, fix, failed, criticalFailed };
       }, [points]);
 
-      // Dynamic Price Calculation
       const currentTierObj = PROPERTY_TIERS.find(t => t.id === propertyTier) || PROPERTY_TIERS[1];
       const hasLargeDog = approvedPets.includes('large_dogs');
       const minAllowedRate = currentTierObj.baseMin;
       const maxAllowedRate = hasLargeDog ? currentTierObj.baseMax + 400 : currentTierObj.baseMax;
 
-      // Submit Audit
-      const handleSubmitAudit = async (e) => {
+      const handleSubmitAudit = (e) => {
         e.preventDefault();
         if (!hostName.trim() || !hostPhone.trim() || !society.trim()) {
           alert('Please fill in Host Full Name, WhatsApp Phone, and Society/Flat Number.');
@@ -360,28 +323,10 @@
           detailedPoints: points
         };
 
-        // Optional Cloud Push if Supabase configured
-        if (cloudConfig.supabaseUrl && cloudConfig.supabaseKey) {
-          try {
-            await fetch(`${cloudConfig.supabaseUrl}/rest/v1/pawsbnb_audits`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'apikey': cloudConfig.supabaseKey,
-                'Authorization': `Bearer ${cloudConfig.supabaseKey}`
-              },
-              body: JSON.stringify({ audit_id: newAudit.auditId, payload: newAudit })
-            });
-          } catch (err) {
-            console.warn('Cloud sync skipped, saved locally:', err);
-          }
-        }
-
         const updated = [newAudit, ...audits];
         setAudits(updated);
         setSelectedAuditId(newAudit.auditId);
 
-        // Reset form for next property
         setHostName('');
         setHostPhone('');
         setSociety('');
@@ -389,31 +334,26 @@
         setPoints(createBlank12Points());
         setInspectorRemarks('');
 
-        triggerToast(`✅ Audit ${newAudit.auditId} saved & sent to Founder Queue!`);
-        setActiveTab('founder');
+        triggerToast(`✅ Audit ${newAudit.auditId} saved successfully!`);
       };
 
-      // Founder Decision + WhatsApp Dispatch
-      const handleFounderDecision = (audit, decision, openWhatsApp = true) => {
+      const handleFounderDecision = (audit, decision) => {
         setAudits(prev => prev.map(a => a.auditId === audit.auditId ? { ...a, approvalStatus: decision } : a));
         triggerToast(`Status updated to ${decision.toUpperCase()}!`);
 
-        if (openWhatsApp) {
-          let waText = '';
-          if (decision === 'approved') {
-            waText = `Hi ${audit.hostName}! 🎉 Welcome to *Paws bnb*! Your home (${audit.society}, ${audit.sector}) has officially PASSED our *12-Point Safety Audit™*. Your Verified Host profile is now unlocked with a nightly price band of ₹${audit.minRate || 850}–₹${audit.maxRate || 1500}/night. A pawsitive stay, while they're away! 🐾`;
-          } else if (decision === 'hold') {
-            const issues = audit.failedItems.length > 0 ? audit.failedItems.join(' | ') : 'Minor safety adjustments needed';
-            waText = `Hi ${audit.hostName}, thank you for welcoming our Paws bnb Field Inspector at ${audit.society}! Your application is on *Conditional Hold* pending quick fixes: ${issues}. Reply with a quick photo/video here once completed so we can activate your host profile immediately! 🐾`;
-          } else {
-            waText = `Hi ${audit.hostName}, thank you for applying to become a Paws bnb host. Unfortunately, your property at ${audit.society} did not meet our mandatory 12-Point Safety Audit standards at this time.`;
-          }
-          const cleanPhone = audit.hostPhone.replace(/\D/g, '');
-          window.open(`https://wa.me/91${cleanPhone}?text=${encodeURIComponent(waText)}`, '_blank');
+        let waText = '';
+        if (decision === 'approved') {
+          waText = `Hi ${audit.hostName}! 🎉 Welcome to *Paws bnb*! Your home (${audit.society}, ${audit.sector}) has officially PASSED our *12-Point Safety Audit™*. Your Verified Host profile is now unlocked with a nightly price band of ₹${audit.minRate || 850}–₹${audit.maxRate || 1500}/night. A pawsitive stay, while they're away! 🐾`;
+        } else if (decision === 'hold') {
+          const issues = audit.failedItems.length > 0 ? audit.failedItems.join(' | ') : 'Minor safety adjustments needed';
+          waText = `Hi ${audit.hostName}, thank you for welcoming our Paws bnb Field Inspector at ${audit.society}! Your application is on *Conditional Hold* pending quick fixes: ${issues}. Reply with a quick photo/video here once completed so we can activate your host profile immediately! 🐾`;
+        } else {
+          waText = `Hi ${audit.hostName}, thank you for applying to become a Paws bnb host. Unfortunately, your property at ${audit.society} did not meet our mandatory 12-Point Safety Audit standards at this time.`;
         }
+        const cleanPhone = audit.hostPhone.replace(/\D/g, '');
+        window.open(`https://wa.me/91${cleanPhone}?text=${encodeURIComponent(waText)}`, '_blank');
       };
 
-      // Delete Single Audit
       const handleDeleteAudit = (auditId) => {
         if (!confirm(`Delete audit ${auditId} permanently?`)) return;
         const remaining = audits.filter(a => a.auditId !== auditId);
@@ -424,42 +364,6 @@
         triggerToast(`🗑️ Audit ${auditId} deleted.`);
       };
 
-      // Export JSON File (For sharing between Inspector Phone & Founder Laptop via WhatsApp/AirDrop)
-      const handleExportJSON = () => {
-        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(audits, null, 2));
-        const dlAnchor = document.createElement('a');
-        dlAnchor.setAttribute("href", dataStr);
-        dlAnchor.setAttribute("download", `pawsbnb-audits-${new Date().toISOString().slice(0,10)}.json`);
-        document.body.appendChild(dlAnchor);
-        dlAnchor.click();
-        dlAnchor.remove();
-        triggerToast('📦 Audit Database exported as .json file!');
-      };
-
-      // Import JSON File
-      const handleImportJSON = (e) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-          try {
-            const imported = JSON.parse(ev.target.result);
-            if (Array.isArray(imported)) {
-              const existingIds = new Set(audits.map(a => a.auditId));
-              const merged = [...imported.filter(a => !existingIds.has(a.auditId)), ...audits];
-              setAudits(merged);
-              if (merged.length > 0) setSelectedAuditId(merged[0].auditId);
-              triggerToast(`📥 Imported ${imported.length} audit packet(s) successfully!`);
-              setShowSyncModal(false);
-            }
-          } catch (err) {
-            alert('Invalid JSON file.');
-          }
-        };
-        reader.readAsText(file);
-      };
-
-      // Filtered Audits for Founder Queue
       const filteredAudits = useMemo(() => {
         return audits.filter(a => {
           const matchesStatus = statusFilter === 'all' || a.approvalStatus === statusFilter;
@@ -477,7 +381,7 @@
 
       return (
         <div className="min-h-screen pb-20">
-          {/* TOP NAVIGATION BAR */}
+          {/* HEADER */}
           <header className="sticky top-0 z-40 bg-charcoal text-oatmeal border-b border-white/10 shadow-lg no-print">
             <div className="max-w-7xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-3">
@@ -488,17 +392,17 @@
                   <div className="flex items-center gap-2">
                     <span className="font-serif text-lg font-bold tracking-tight text-white">Paws bnb™</span>
                     <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-sage/20 text-sage font-bold border border-sage/40">
-                      Live Audit OS v2.0
+                      Field OS
                     </span>
                   </div>
-                  <p className="text-[11px] text-white/60">A pawsitive stay, while you're away • Internal Verification System</p>
+                  <p className="text-[11px] text-white/60">A pawsitive stay, while you're away</p>
                 </div>
               </div>
 
               <div className="flex items-center gap-2 flex-wrap">
                 <div className="flex bg-black/40 p-1 rounded-xl border border-white/10">
                   <button
-                    onClick={() => setActiveTab('inspector')}
+                    onClick={() => handleTabSwitch('inspector')}
                     className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
                       activeTab === 'inspector' ? 'bg-terracotta text-white shadow' : 'text-white/70 hover:text-white'
                     }`}
@@ -506,38 +410,75 @@
                     📱 Field Inspector
                   </button>
                   <button
-                    onClick={() => setActiveTab('founder')}
+                    onClick={() => handleTabSwitch('founder')}
                     className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
                       activeTab === 'founder' ? 'bg-terracotta text-white shadow' : 'text-white/70 hover:text-white'
                     }`}
                   >
-                    💻 Founder Queue
-                    <span className="bg-white/20 text-white px-1.5 py-0.2 rounded-full text-[10px]">
-                      {audits.filter(a => a.approvalStatus === 'pending').length}
-                    </span>
+                    🔒 Founder Queue
+                    {isFounderUnlocked && <span className="text-sage">✔</span>}
                   </button>
                 </div>
 
-                <button
-                  onClick={() => setShowSyncModal(true)}
-                  className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-bold text-white border border-white/15 transition"
-                >
-                  ⚙️ Sync / Export DB
-                </button>
+                {isFounderUnlocked && activeTab === 'founder' && (
+                  <button
+                    onClick={() => setIsFounderUnlocked(false)}
+                    className="px-2.5 py-1.5 rounded-xl bg-red-500/20 text-red-300 text-xs font-bold border border-red-500/30"
+                  >
+                    Lock Founder Mode
+                  </button>
+                )}
               </div>
             </div>
           </header>
 
-          {/* TOAST BANNER */}
+          {/* TOAST */}
           {toast && (
             <div className="fixed bottom-6 right-6 z-50 bg-charcoal text-white px-5 py-3 rounded-2xl shadow-2xl border-2 border-sage flex items-center gap-2.5 no-print">
               <span className="text-sm font-bold">{toast}</span>
             </div>
           )}
 
-          {/* =========================================================
-              VIEW 1: MOBILE FIELD INSPECTOR FORM
-             ========================================================= */}
+          {/* PIN MODAL FOR FOUNDER ACCESS */}
+          {showPinModal && (
+            <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
+              <div className="bg-white max-w-sm w-full rounded-3xl p-6 shadow-2xl text-center">
+                <div className="w-12 h-12 rounded-2xl bg-terracotta/10 text-terracotta text-2xl flex items-center justify-center mx-auto mb-3">
+                  🔒
+                </div>
+                <h3 className="font-serif text-xl font-bold text-charcoal mb-1">Founder Access Restricted</h3>
+                <p className="text-xs text-charcoal/70 mb-4">Enter your 4-digit Founder PIN to access the approval queue and WhatsApp dispatch.</p>
+                <form onSubmit={verifyFounderPin} className="space-y-3">
+                  <input
+                    type="password"
+                    maxLength="6"
+                    placeholder="Enter 4-Digit PIN"
+                    value={pinInput}
+                    onChange={e => setPinInput(e.target.value)}
+                    autoFocus
+                    className="w-full text-center px-4 py-3 rounded-xl bg-oatmeal border border-charcoal/20 text-lg tracking-widest font-bold focus:outline-none focus:border-terracotta"
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowPinModal(false)}
+                      className="flex-1 py-2.5 rounded-xl bg-gray-200 text-charcoal text-xs font-bold"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      className="flex-1 py-2.5 rounded-xl bg-terracotta text-white text-xs font-bold shadow"
+                    >
+                      Unlock Dashboard
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 1: FIELD INSPECTOR FORM */}
           {activeTab === 'inspector' && (
             <main className="max-w-lg mx-auto px-4 pt-6 no-print">
               <div className="bg-white rounded-3xl p-5 shadow-sm border border-charcoal/10 mb-5">
@@ -546,14 +487,14 @@
                     Step 1 • On-Site GPS & Host Metadata
                   </span>
                   <span className="text-[11px] font-bold text-sageDark bg-sage/20 px-2 py-0.5 rounded-lg">
-                    Auto-Saved Locally
+                    Field Agent Portal
                   </span>
                 </div>
                 <h1 className="font-serif text-2xl font-bold text-charcoal mb-1">
                   12-Point Field Verification
                 </h1>
                 <p className="text-xs text-charcoal/70 mb-4">
-                  Photos are automatically compressed for instant upload. Critical fails lock host approval.
+                  Complete all checks on-site. Photos compress automatically for instant upload.
                 </p>
 
                 {/* GPS Stamp */}
@@ -628,19 +569,6 @@
                       />
                     </div>
                   </div>
-                  <div>
-                    <label className="block text-xs font-bold text-charcoal mb-1">Host Instant-Book Notice Preference</label>
-                    <select
-                      value={instantBookNotice}
-                      onChange={e => setInstantBookNotice(e.target.value)}
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-charcoal/20 text-sm font-medium"
-                    >
-                      <option>Same-Day (3 Hrs Advance Notice)</option>
-                      <option>Same-Day (6 Hrs Advance Notice)</option>
-                      <option>1 Day Advance Notice</option>
-                      <option>2 Days Advance Notice</option>
-                    </select>
-                  </div>
                 </div>
               </div>
 
@@ -698,7 +626,7 @@
                 </div>
               </div>
 
-              {/* STEP 3: DYNAMIC PRICING TIER & SPECIES */}
+              {/* STEP 3: PROPERTY TIER & SPECIES */}
               <div className="bg-white rounded-3xl p-5 shadow-sm border border-charcoal/10 mb-5">
                 <span className="text-xs font-extrabold uppercase tracking-wider text-terracotta">
                   Step 3 • Property Tier & Multi-Species Approval
@@ -863,7 +791,7 @@
                   Step 5 • Inspector Recommendation
                 </span>
                 <h2 className="font-serif text-xl font-bold text-charcoal mt-0.5 mb-2">
-                  Send to Founder Queue
+                  Submit Audit Report
                 </h2>
 
                 {auditStats.criticalFailed && (
@@ -901,7 +829,7 @@
 
                 <textarea
                   rows="3"
-                  placeholder="Inspector field notes for Founder review..."
+                  placeholder="Inspector field notes..."
                   value={inspectorRemarks}
                   onChange={e => setInspectorRemarks(e.target.value)}
                   className="w-full p-3 rounded-2xl bg-oatmeal/50 border border-charcoal/20 text-xs mb-4"
@@ -911,25 +839,23 @@
                   type="submit"
                   className="w-full py-4 rounded-2xl bg-terracotta hover:bg-terracottaDark text-white font-bold text-sm shadow-lg transition"
                 >
-                  🚀 Save & Send Audit to Founder Queue
+                  🚀 Submit Audit Report
                 </button>
               </form>
             </main>
           )}
 
-          {/* =========================================================
-              VIEW 2: FOUNDER APPROVAL DASHBOARD
-             ========================================================= */}
-          {activeTab === 'founder' && (
+          {/* TAB 2: FOUNDER APPROVAL DASHBOARD (LOCKED BY PIN) */}
+          {activeTab === 'founder' && isFounderUnlocked && (
             <main className="max-w-7xl mx-auto px-4 pt-6">
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
                 
-                {/* LEFT SIDEBAR: SEARCH, FILTER & QUEUE */}
+                {/* LEFT SIDEBAR */}
                 <div className="lg:col-span-4 space-y-3 no-print">
                   <div className="bg-white rounded-2xl p-3.5 border border-charcoal/10 shadow-sm space-y-2.5">
                     <input
                       type="text"
-                      placeholder="🔍 Search host, society, or sector..."
+                      placeholder="🔍 Search host or society..."
                       value={searchQuery}
                       onChange={e => setSearchQuery(e.target.value)}
                       className="w-full px-3 py-2 rounded-xl bg-oatmeal/60 border border-charcoal/15 text-xs font-medium"
@@ -985,7 +911,7 @@
                   ))}
                 </div>
 
-                {/* RIGHT DOSSIER: FULL INSPECTION REPORT */}
+                {/* RIGHT DOSSIER */}
                 {selectedAudit && (
                   <div className="lg:col-span-8">
                     <div className="bg-white rounded-3xl p-6 shadow-sm border border-charcoal/10">
@@ -1010,7 +936,7 @@
                             onClick={() => window.print()}
                             className="text-xs font-bold px-3 py-2 rounded-xl bg-oatmeal hover:bg-charcoal hover:text-white transition"
                           >
-                            🖨️ Print / PDF Certificate
+                            🖨️ Print PDF
                           </button>
                           <button
                             onClick={() => handleDeleteAudit(selectedAudit.auditId)}
@@ -1021,44 +947,36 @@
                         </div>
                       </div>
 
-                      {/* SUMMARY METRICS */}
+                      {/* STATS */}
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 my-4">
                         <div className="bg-oatmeal/60 p-3 rounded-2xl">
-                          <span className="text-[10px] font-bold uppercase text-charcoal/60">Property & Price Cap</span>
+                          <span className="text-[10px] font-bold uppercase text-charcoal/60">Price Band</span>
                           <p className="text-xs font-bold text-charcoal mt-0.5">
-                            ₹{selectedAudit.minRate || 850}–₹{selectedAudit.maxRate || 1500}/night
+                            ₹{selectedAudit.minRate || 850}–₹{selectedAudit.maxRate || 1500}/nt
                           </p>
                         </div>
                         <div className="bg-oatmeal/60 p-3 rounded-2xl">
-                          <span className="text-[10px] font-bold uppercase text-charcoal/60">12-Point Audit Score</span>
-                          <p className="text-xs font-bold text-charcoal mt-0.5">
-                            {selectedAudit.pointsSummary.passed}/12 Passed
-                          </p>
+                          <span className="text-[10px] font-bold uppercase text-charcoal/60">Score</span>
+                          <p className="text-xs font-bold text-charcoal mt-0.5">{selectedAudit.pointsSummary.passed}/12 Passed</p>
                         </div>
                         <div className="bg-oatmeal/60 p-3 rounded-2xl">
-                          <span className="text-[10px] font-bold uppercase text-charcoal/60">Tracking & Camera</span>
-                          <p className="text-xs font-bold text-charcoal mt-0.5">
-                            {selectedAudit.cameraAmenity ? '📹 Pet-Room Cam + GPS' : '📱 Video Call + Walk GPS'}
-                          </p>
+                          <span className="text-[10px] font-bold uppercase text-charcoal/60">Camera</span>
+                          <p className="text-xs font-bold text-charcoal mt-0.5">{selectedAudit.cameraAmenity ? '📹 Opted In' : '📱 Standard'}</p>
                         </div>
                         <div className="bg-oatmeal/60 p-3 rounded-2xl">
-                          <span className="text-[10px] font-bold uppercase text-charcoal/60">Host Motivation</span>
-                          <p className="text-xs font-bold text-terracotta mt-0.5">
-                            {selectedAudit.emotionalMotivation ? '♥ Emotional / Companionship' : 'Standard Host'}
-                          </p>
+                          <span className="text-[10px] font-bold uppercase text-charcoal/60">Motivation</span>
+                          <p className="text-xs font-bold text-terracotta mt-0.5">{selectedAudit.emotionalMotivation ? '♥ Emotional' : 'Standard'}</p>
                         </div>
                       </div>
 
-                      {/* KYC & HOME PHOTO EVIDENCE */}
-                      <h3 className="text-xs font-bold uppercase tracking-wider text-charcoal/60 mb-2">
-                        On-Site KYC & Property Captures (Click to Zoom)
-                      </h3>
+                      {/* PHOTOS */}
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-charcoal/60 mb-2">On-Site Evidence (Click to Zoom)</h3>
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
                         {[
-                          { label: 'Live Host Photo', src: selectedAudit.kycPhotos.hostSelfie },
-                          { label: 'Govt ID (Aadhaar/PAN)', src: selectedAudit.kycPhotos.govtId },
+                          { label: 'Host Selfie', src: selectedAudit.kycPhotos.hostSelfie },
+                          { label: 'Govt ID', src: selectedAudit.kycPhotos.govtId },
                           { label: 'Residency Proof', src: selectedAudit.kycPhotos.residencyProof },
-                          { label: 'Couch / Sleeping Zone', src: selectedAudit.kycPhotos.livingRoom },
+                          { label: 'Couch Zone', src: selectedAudit.kycPhotos.livingRoom },
                         ].map((img, i) => (
                           <div
                             key={i}
@@ -1073,14 +991,13 @@
                         ))}
                       </div>
 
-                      {/* INSPECTOR REMARKS */}
+                      {/* REMARKS */}
                       <div className="bg-oatmeal/70 rounded-2xl p-4 border border-charcoal/10 mb-5">
-                        <p className="text-xs font-bold text-charcoal mb-1">📋 Field Inspector Remarks:</p>
-                        <p className="text-xs text-charcoal/80 leading-relaxed">"{selectedAudit.inspectorRemarks}"</p>
-
+                        <p className="text-xs font-bold text-charcoal mb-1">📋 Inspector Remarks:</p>
+                        <p className="text-xs text-charcoal/80">"{selectedAudit.inspectorRemarks}"</p>
                         {selectedAudit.failedItems?.length > 0 && (
                           <div className="mt-3 pt-3 border-t border-charcoal/10">
-                            <p className="text-xs font-bold text-amber-700 mb-1">⚠️ Flagged Items to Fix:</p>
+                            <p className="text-xs font-bold text-amber-700 mb-1">⚠️ Flagged Items:</p>
                             <ul className="list-disc list-inside text-xs text-charcoal space-y-1">
                               {selectedAudit.failedItems.map((item, idx) => <li key={idx}>{item}</li>)}
                             </ul>
@@ -1088,29 +1005,29 @@
                         )}
                       </div>
 
-                      {/* FOUNDER APPROVAL ACTIONS */}
+                      {/* ACTIONS */}
                       <div className="pt-4 border-t border-charcoal/10 no-print">
                         <p className="text-xs font-bold uppercase tracking-wider text-charcoal/60 mb-3">
-                          Founder Final Action (Updates Database & Launches Pre-Filled WhatsApp to +91 {selectedAudit.hostPhone})
+                          Founder Action (Launches WhatsApp to +91 {selectedAudit.hostPhone})
                         </p>
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                           <button
-                            onClick={() => handleFounderDecision(selectedAudit, 'approved', true)}
-                            className="py-3.5 px-4 rounded-2xl bg-sageDark hover:opacity-95 text-white font-bold text-xs shadow transition"
+                            onClick={() => handleFounderDecision(selectedAudit, 'approved')}
+                            className="py-3.5 px-4 rounded-2xl bg-sageDark text-white font-bold text-xs shadow transition"
                           >
-                            ✅ Approve & WhatsApp Host
+                            ✅ Approve & WhatsApp
                           </button>
                           <button
-                            onClick={() => handleFounderDecision(selectedAudit, 'hold', true)}
-                            className="py-3.5 px-4 rounded-2xl bg-amber-600 hover:opacity-95 text-white font-bold text-xs shadow transition"
+                            onClick={() => handleFounderDecision(selectedAudit, 'hold')}
+                            className="py-3.5 px-4 rounded-2xl bg-amber-600 text-white font-bold text-xs shadow transition"
                           >
-                            🟡 Hold & Send Fix Checklist
+                            🟡 Hold & Send Fix List
                           </button>
                           <button
-                            onClick={() => handleFounderDecision(selectedAudit, 'rejected', true)}
-                            className="py-3.5 px-4 rounded-2xl bg-red-600 hover:opacity-95 text-white font-bold text-xs shadow transition"
+                            onClick={() => handleFounderDecision(selectedAudit, 'rejected')}
+                            className="py-3.5 px-4 rounded-2xl bg-red-600 text-white font-bold text-xs shadow transition"
                           >
-                            🔴 Reject & Notify Host
+                            🔴 Reject & Notify
                           </button>
                         </div>
                       </div>
@@ -1121,71 +1038,7 @@
             </main>
           )}
 
-          {/* SYNC / EXPORT MODAL */}
-          {showSyncModal && (
-            <div className="fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4 no-print">
-              <div className="bg-white max-w-lg w-full rounded-3xl p-6 shadow-2xl">
-                <div className="flex items-center justify-between pb-3 border-b border-charcoal/10 mb-4">
-                  <h3 className="font-serif text-xl font-bold text-charcoal">Database Sync & File Transfer</h3>
-                  <button onClick={() => setShowSyncModal(false)} className="text-xs font-bold px-2.5 py-1 rounded-lg bg-oatmeal">✕</button>
-                </div>
-
-                {/* Option A: Instant File Export/Import (Zero Setup) */}
-                <div className="bg-oatmeal rounded-2xl p-4 mb-4">
-                  <p className="text-xs font-bold text-charcoal mb-1">Option 1: Instant WhatsApp / AirDrop Packet Transfer (No Server Needed)</p>
-                  <p className="text-[11px] text-charcoal/70 mb-3">
-                    Your field inspector can export their completed audits as a file on their phone and WhatsApp it to you. Click "Import" on your MacBook to view all photos & approve!
-                  </p>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={handleExportJSON}
-                      className="flex-1 py-2.5 rounded-xl bg-charcoal text-white text-xs font-bold"
-                    >
-                      📤 Export Audits (.json)
-                    </button>
-                    <label className="flex-1 py-2.5 rounded-xl bg-terracotta text-white text-xs font-bold text-center cursor-pointer">
-                      📥 Import Audit File
-                      <input type="file" accept=".json" onChange={handleImportJSON} className="hidden" />
-                    </label>
-                  </div>
-                </div>
-
-                {/* Option B: Live Supabase Cloud Sync */}
-                <div className="bg-oatmeal/50 rounded-2xl p-4 border border-charcoal/10">
-                  <p className="text-xs font-bold text-charcoal mb-1">Option 2: Live Supabase Cloud Database (Optional)</p>
-                  <p className="text-[11px] text-charcoal/70 mb-2">
-                    Connect a Supabase project URL & Anon Key to automatically push every field inspection to the cloud in real time.
-                  </p>
-                  <input
-                    type="text"
-                    placeholder="https://your-project.supabase.co"
-                    value={cloudConfig.supabaseUrl}
-                    onChange={e => setCloudConfig({ ...cloudConfig, supabaseUrl: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl bg-white border border-charcoal/20 text-xs mb-2"
-                  />
-                  <input
-                    type="password"
-                    placeholder="Supabase Anon Public Key"
-                    value={cloudConfig.supabaseKey}
-                    onChange={e => setCloudConfig({ ...cloudConfig, supabaseKey: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl bg-white border border-charcoal/20 text-xs mb-3"
-                  />
-                  <button
-                    onClick={() => {
-                      localStorage.setItem(CLOUD_CONFIG_KEY, JSON.stringify(cloudConfig));
-                      triggerToast('☁️ Cloud credentials saved!');
-                      setShowSyncModal(false);
-                    }}
-                    className="w-full py-2.5 rounded-xl bg-sageDark text-white text-xs font-bold"
-                  >
-                    Save Cloud Connection
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* IMAGE LIGHTBOX */}
+          {/* LIGHTBOX */}
           {lightboxImg && (
             <div onClick={() => setLightboxImg(null)} className="fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-4 no-print">
               <div className="max-w-2xl w-full bg-white rounded-3xl overflow-hidden">
